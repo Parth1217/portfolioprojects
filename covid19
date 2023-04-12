@@ -1,0 +1,136 @@
+-- /*The script explores COVID-19 data using various SQL techniques such as Joins, Common Table Expressions (CTEs), Temp Tables, Windows Functions, Aggregate Functions, and creating Views. It includes queries to extract information such as the number of COVID-19 cases and deaths per location, the percentage of the population infected, and the death rate per case. It also calculates the percentage of the population that has received at least one COVID-19 vaccine dose. The results are grouped by location, continent, and globally. The script also demonstrates how to create a view to store the data for later use in visualizations. */--
+
+-- Used Big Qyery Cloud Server
+
+-- select database --
+select * from `driven-seer-382417.Covid_data.covid_death`
+where continent is not null
+order by 1,2
+-- We will starting with covid data set --
+select continent, location, date, total_cases, population from 
+`driven-seer-382417.Covid_data.covid_death`
+where continent is not null 
+order by 1,2
+
+-- Total cases vs Death
+--use not null to remove null value
+select continent, location, date ,total_cases, total_deaths, (total_deaths/total_cases)* 100 as perdeathovercases
+from `driven-seer-382417.Covid_data.covid_death`
+where continent is not null
+order by 1,2
+-- Heightest   cases vs population 
+-- for specific country
+
+select  location, population, max(total_cases), max((total_cases/population))*100 as highcaseoverpop
+from `driven-seer-382417.Covid_data.covid_death`
+where continent is not null
+group by  location, population
+order by 3 desc
+
+-- total cases vs population 
+-- By continent
+select continent, max(total_cases) as maxcase, max((total_cases/population))*100 as highcaseoverpop
+from `driven-seer-382417.Covid_data.covid_death`
+where continent is not null
+group by continent 
+order by 3 desc
+
+--  death vs population
+-- using max 
+-- For pertculer continent
+
+select  continent,max(total_deaths) as highdeath,max((total_deaths/population))*100 as highdeathoverpopu
+from `driven-seer-382417.Covid_data.covid_death`
+where continent is not null and continent like "Euro%"
+group by continent
+order by highdeathoverpopu desc
+
+--  Death vs population--
+-- Min death of location-- 
+
+select location, min(total_deaths) as lowdeath, min((total_deaths)/population)*100 as lowdeathoverpopu
+from `driven-seer-382417.Covid_data.covid_death`
+where continent is not null
+group by location
+order by lowdeathoverpopu desc
+
+-- Identify number of new cases vs number of new deaths--
+
+select location, continent date ,sum(new_cases ) as totalcases, sum(cast (new_deaths as int)) as totaldeaths, sum(cast(new_deaths as int))/sum(new_cases)* 100 as deathsovercases
+from `driven-seer-382417.Covid_data.covid_death` 
+where continent is not null and new_cases<> 0
+group by date,location
+order by 1
+
+-- Total Population vs Vaccinations
+-- Shows Percentage of Population that has recieved at least one Covid Vaccine
+Select dea.continent, dea.location, dea.date, dea.population, vac.new_people_vaccinated_smoothed
+, SUM(vac.new_people_vaccinated_smoothed) OVER (Partition by dea.Location Order by dea.location, dea.Date) as updatingdailypeopleVaccinated
+--, (upddatingdailyPeopleVaccinated/population)*100
+From `driven-seer-382417.Covid_data.covid_death` dea
+
+Join `driven-seer-382417.Covid_data.covid_vaccination` vac
+	On dea.location = vac.location
+	and dea.date = vac.date
+where dea.continent is not null 
+order by 2,3
+ 
+ select*from `driven-seer-382417.Covid_data.covid_vaccination`
+ -- Using CTE to perform Calculation on Partition By in previous query
+
+With PopuvsVacci (Continent, Location, Date, Population, New_Vaccinations, UpdatingDailyPeopleVaccinated)
+as
+(
+Select dea.continent, dea.location, dea.date, dea.population, vac.new_people_vaccinated_smoothed
+, SUM(vac.new_people_vaccinated_smoothed) OVER (Partition by dea.Location Order by dea.location, dea.Date) as updatingdailyPeopleVaccinated
+--, (updatingdailyPeopleVaccinated/population) * 100
+From `driven-seer-382417.Covid_data.covid_death` dea
+Join `driven-seer-382417.Covid_data.covid_vaccination` vac
+	On dea.location = vac.location
+	and dea.date = vac.date
+where dea.continent is not null 
+
+)
+
+Select *, (updatingdailyPeopleVaccinated/Population)*100
+From PercentPopulationVaccinated
+
+-- Using Temp Table to perform Calculation on Partition By in previous query
+
+DROP Table if exists #PercentPopulationVaccinated
+Create Table PercentPopulationVaccinated
+(
+Continent nvarchar(255),
+Location nvarchar(255),
+Date datetime,
+Population numeric,
+New_vaccinations numeric,
+RollingPeopleVaccinated numeric
+)
+
+Insert into #PercentPopulationVaccinated
+Select dea.continent, dea.location, dea.date, dea.population, vac.new_people_vaccinated_smoothed
+, SUM(vac.new_people_vaccinated_smoothed) OVER (Partition by dea.Location Order by dea.location, dea.Date) as updatingdailyPeopleVaccinated
+--, (updatingdailyPeopleVaccinated/population) * 100
+From `driven-seer-382417.Covid_data.covid_death` dea
+Join `driven-seer-382417.Covid_data.covid_vaccination` vac
+	On dea.location = vac.location
+	and dea.date = vac.date
+--where dea.continent is not null 
+--order by 1,2
+
+Select *, (updatingdailyPeopleVaccinated/Population)*100
+From  PercentPopulationVaccinated
+
+-- Creating View to store data for later visualizations
+
+Create View PercentPopulationVaccinated as
+Select dea.continent, dea.location, dea.date, dea.population, vac.new_people_vaccinated_smoothed
+, SUM(vac.new_people_vaccinated_smoothed) OVER (Partition by dea.Location Order by dea.location, dea.Date) as updatingdailyPeopleVaccinated
+--, (updatingdailyPeopleVaccinated/population) * 100
+From `driven-seer-382417.Covid_data.covid_death` dea
+Join `driven-seer-382417.Covid_data.covid_vaccination` vac
+	On dea.location = vac.location
+	and dea.date = vac.date
+where dea.continent is not null 
+
